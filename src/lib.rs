@@ -11,9 +11,19 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct TcpRsConfig {
-    ip_port: String,
-    to_player_buffer_size: usize,
-    to_game_buffer_size: usize,
+    pub ip_port: String,
+    pub to_player_buffer_size: usize,
+    pub to_game_buffer_size: usize,
+}
+
+impl TcpRsConfig {
+    pub fn new(ip_port: &str, to_player_buffer_size: usize, to_game_buffer_size: usize) -> Self {
+        Self {
+            ip_port: ip_port.to_owned(),
+            to_player_buffer_size,
+            to_game_buffer_size,
+        }
+    }
 }
 
 pub async fn run_tcp_server(config: TcpRsConfig) -> Result<Receiver<MsgFromPlayerToGame>> {
@@ -76,7 +86,7 @@ async fn send_to_game(
                         msg_to_player(player, MsgFromLobbyToPlayer::AlreadyConnected).await;
                         continue;
                     }
-                    player = Some(Player {
+                    player = Some(TcpRsPlayer {
                         name,
                         uuid,
                         to_player_tx: to_player_tx.clone(),
@@ -101,7 +111,7 @@ async fn send_to_game(
                 msg
             );
             msg_to_player(
-                &Player {
+                &TcpRsPlayer {
                     name: "Unkown".to_string(),
                     uuid: Uuid::nil(),
                     to_player_tx: to_player_tx.clone(),
@@ -115,7 +125,7 @@ async fn send_to_game(
     // Disconnect
     match player {
         Some(player) => {
-            info!("Player `{:?}` disconnecting", player.name);
+            info!("Player `{}` disconnecting", player.name);
             msg_to_game(&mut to_game_tx, &player, MsgFromLobbyToGame::Disconnect).await;
         }
         None => {
@@ -144,25 +154,25 @@ enum MsgFromLobbyToGame {
 }
 
 #[derive(Debug, Clone)]
-pub struct Player {
-    name: String,
-    uuid: Uuid,
-    to_player_tx: Sender<String>,
+pub struct TcpRsPlayer {
+    pub name: String,
+    pub uuid: Uuid,
+    pub to_player_tx: Sender<String>,
 }
 
 #[derive(Debug)]
 pub struct MsgFromPlayerToGame {
     pub msg: String,
-    pub player: Player,
+    pub player: TcpRsPlayer,
 }
 
 impl MsgFromPlayerToGame {
-    fn new(msg: String, player: Player) -> Self {
+    fn new(msg: String, player: TcpRsPlayer) -> Self {
         Self { msg, player }
     }
 }
 
-pub async fn msg_to_player<M: Serialize + std::fmt::Debug>(player: &Player, msg: M) {
+pub async fn msg_to_player<M: Serialize + std::fmt::Debug>(player: &TcpRsPlayer, msg: M) {
     match serde_json::to_string(&msg) {
         Err(err) => {
             error!(
@@ -183,7 +193,7 @@ pub async fn msg_to_player<M: Serialize + std::fmt::Debug>(player: &Player, msg:
 
 pub async fn msg_to_game<M: Serialize + std::fmt::Debug>(
     to_game_tx: &mut Sender<MsgFromPlayerToGame>,
-    player: &Player,
+    player: &TcpRsPlayer,
     msg: M,
 ) {
     match serde_json::to_string(&msg) {
@@ -199,7 +209,7 @@ pub async fn msg_to_game<M: Serialize + std::fmt::Debug>(
 
 pub async fn msg_to_game_string(
     to_game_tx: &mut Sender<MsgFromPlayerToGame>,
-    player: &Player,
+    player: &TcpRsPlayer,
     msg: String,
 ) {
     let msg = MsgFromPlayerToGame::new(msg, player.clone());
